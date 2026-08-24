@@ -58,9 +58,9 @@ func (s *Service) Release(ctx context.Context, sessionID string) (Session, error
 		s.mu.Unlock()
 		return Session{}, fmt.Errorf("filter preparation %s does not exist", sessionID)
 	}
-	if !session.Pressure.Valid {
+	if err := session.ValidateProofs(); err != nil {
 		s.mu.Unlock()
-		return *session, fmt.Errorf("filter pressure is not stable")
+		return *session, err
 	}
 	session.Phase = Ready
 	session.ReadyAt = time.Now().UTC()
