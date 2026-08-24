@@ -36,7 +36,15 @@ func (s *Service) SwitchTo(ctx context.Context, branchID string) (Switch, error)
 
 func (s *Service) ApplyPurgePulse(ctx context.Context, pulse meter.Pulse) (bool, error) {
 	s.mu.Lock()
-	branch := s.branches[s.active]
+	// Credit the displacement to the physical path the pulse actually traversed
+	// (pulse.BranchID), not to the currently active branch. During a source
+	// switch the residual flow still travels the old branch's piping for a
+	// short time; those pulses are labelled with the old branch and must only
+	// advance that branch's purge accounting. The new branch becomes available
+	// solely from volume that genuinely displaced fluid through its own path,
+	// otherwise it would be reported purge-complete while still carrying the
+	// previous source's tracer.
+	branch := s.branches[pulse.BranchID]
 	if branch == nil {
 		s.mu.Unlock()
 		return false, fmt.Errorf("pulse physical path %s/%s is not a configured source branch", pulse.RouteID, pulse.BranchID)
