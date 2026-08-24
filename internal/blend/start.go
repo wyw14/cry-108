@@ -25,16 +25,23 @@ func (s *Service) Start(ctx context.Context, batchID string, options StartOption
 	s.mu.Lock()
 	s.batches[batchID].WaterAcceptedAt = command.AcceptedAt
 	s.mu.Unlock()
-	startedAt, err := s.valves.StartConcentrate(ctx, batchID)
-	if err != nil {
-		return Batch{}, err
-	}
+	// The dilution water flow must be proven for this batch before the
+	// concentrate pump is started. Relying on the valve command's accepted
+	// timestamp is unsafe: when the water valve is slow to establish actual
+	// flow, starting the acid pump immediately lets concentrate enter the
+	// vessel before dilution is present, spiking the inlet concentration.
+	// EstablishDilutionFlow still honors the configured water feedback delay,
+	// so the blend cadence under normal valve response is unchanged.
 	proof, err := s.meters.EstablishDilutionFlow(ctx, batchID, options.WaterFeedbackDelay, options.MinimumWaterFlow)
 	if err != nil {
 		return Batch{}, err
 	}
 	if proof.BatchID != batchID || proof.LitersMinute < options.MinimumWaterFlow {
 		return Batch{}, fmt.Errorf("dilution flow proof does not satisfy current batch")
+	}
+	startedAt, err := s.valves.StartConcentrate(ctx, batchID)
+	if err != nil {
+		return Batch{}, err
 	}
 	s.mu.Lock()
 	batch := s.batches[batchID]
