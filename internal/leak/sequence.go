@@ -37,12 +37,9 @@ func (s *Sequence) Contain(ctx context.Context, incidentID string, options Respo
 	}
 	incident.State = Isolating
 	s.detector.Update(incident)
-	granted, err := s.scrubber.Drain(ctx, incident.ID, options.ResidualVolume)
-	if err != nil {
-		incident.Alarm = err.Error()
-		s.detector.Update(incident)
-		return incident, err
-	}
+	// Confirm the upstream supply is cut off before opening the accident drain;
+	// otherwise feed keeps running into the waste line during the isolation delay
+	// and the scrubber inlet reports high VOC loading.
 	proof, err := s.isolate.Isolate(ctx, incident.ID, "cabinet leak", options.IsolationDelay, options.IsolationFails)
 	if err != nil || !proof.Confirmed {
 		incident.State = Unsecured
@@ -53,6 +50,12 @@ func (s *Sequence) Contain(ctx context.Context, incidentID string, options Respo
 	incident.IsolationConfirmed = true
 	incident.State = Draining
 	s.detector.Update(incident)
+	granted, err := s.scrubber.Drain(ctx, incident.ID, options.ResidualVolume)
+	if err != nil {
+		incident.Alarm = err.Error()
+		s.detector.Update(incident)
+		return incident, err
+	}
 	incident.DrainedVolume = granted
 	if granted < options.ResidualVolume {
 		incident.Alarm = "high VOC loading while controlled drain is active"
